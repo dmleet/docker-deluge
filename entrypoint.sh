@@ -17,3 +17,5 @@ done
 
 echo "Starting deluge-web"
 deluge-web --do-not-daemonize --config /home/deluge/.config/deluge --loglevel=${DELUGE_LOGLEVEL} &
+
+wait -n
