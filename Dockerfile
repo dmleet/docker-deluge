@@ -17,7 +17,6 @@ RUN echo "Creating deluge user" && \
     adduser -u 1000 -G deluge -s /bin/sh -D deluge
 
 ENV XDG_CONFIG_HOME=/home/deluge/.config
-ENV PYTHON_EGG_CACHE=/tmp
 
 VOLUME [ "/home/deluge/.config/deluge" ]
 RUN mkdir -p /home/deluge/.config/deluge && \
