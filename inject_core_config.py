@@ -36,5 +36,17 @@ for param in os.environ.keys():
         logging.debug("Injecting %s = %s" % (propertyName, propertyValue))
         config[propertyName] = propertyValue
 
+# For deployment using kubernetes stateful set
+# Dynamically set incoming port based on pod name
+base_port = 61534
+pod_name = os.getenv('POD_NAME', 'deluge-0')
+match = re.match(r'.*-(\d+)$', pod_name)
+if match:
+    pod_index = int(match.group(1))
+else:
+    pod_index = 0
+listen_port = base_port + pod_index
+config["listen_ports"] = [listen_port, listen_port]
+
 logging.info("Saving merged %s" % configFileName)
 config.save(configPath)

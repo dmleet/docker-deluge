@@ -44,4 +44,4 @@ RUN chmod +x /opt/deluge/entrypoint.sh
 
 EXPOSE 8112 58846 58946 58946/udp
 
-ENTRYPOINT [ "/opt/deluge/entrypoint.sh" ]
+ENTRYPOINT [ "sh", "/opt/deluge/entrypoint.sh" ]
