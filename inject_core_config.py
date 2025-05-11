@@ -38,15 +38,20 @@ for param in os.environ.keys():
 
 # For deployment using kubernetes stateful set
 # Dynamically set incoming port based on pod name
-base_port = 61534
-pod_name = os.getenv('POD_NAME', 'deluge-0')
-match = re.match(r'.*-(\d+)$', pod_name)
-if match:
-    pod_index = int(match.group(1))
+if 'POD_NAME' in os.environ:
+    base_port = 61534
+    pod_name = os.getenv('POD_NAME')
+    match = re.match(r'.*-(\d+)$', pod_name)
+    if match:
+        pod_index = int(match.group(1))
+        listen_port = base_port + pod_index
+        config["listen_ports"] = [listen_port, listen_port]
+        config["random_port"] = "false"
+        logging.info(f"Assigned listen port {listen_port} for pod {pod_name}")
+    else:
+        logging.warning(f"POD_NAME found but did not match expected pattern: {pod_name}; using random listen port")
 else:
-    pod_index = 0
-listen_port = base_port + pod_index
-config["listen_ports"] = [listen_port, listen_port]
+    logging.info("POD_NAME not set; using random listen port")
 
 logging.info("Saving merged %s" % configFileName)
 config.save(configPath)
