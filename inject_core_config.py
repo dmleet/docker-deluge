@@ -46,12 +46,11 @@ if 'POD_NAME' in os.environ:
         pod_index = int(match.group(1))
         listen_port = base_port + pod_index
         config["listen_ports"] = [listen_port, listen_port]
-        config["random_port"] = "false"
         logging.info(f"Assigned listen port {listen_port} for pod {pod_name}")
     else:
-        logging.warning(f"POD_NAME found but did not match expected pattern: {pod_name}; using random listen port")
+        logging.warning(f"POD_NAME found but did not match expected pattern: {pod_name}")
 else:
-    logging.info("POD_NAME not set; using random listen port")
+    logging.info("POD_NAME not set; using default listen ports")
 
 logging.info("Saving merged %s" % configFileName)
 config.save(configPath)
