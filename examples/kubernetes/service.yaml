@@ -1,0 +1,69 @@
+# One Service per StatefulSet pod, each exposing the pod's unique BitTorrent
+# listen port (61534 + pod_index). Adjust the loadBalancer annotation, address
+# pool, or Service type to match your environment (MetalLB shown here).
+#
+# Why per-pod Services: each replica needs its own externally-reachable
+# BitTorrent listen port so peers can connect. A single fronting Service
+# would round-robin across pods and break peer connectivity.
+apiVersion: v1
+kind: Service
+metadata:
+  name: deluge-pod-0
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: 10.0.0.10
+spec:
+  type: LoadBalancer
+  selector:
+    statefulset.kubernetes.io/pod-name: deluge-0
+  ports:
+    - port: 58846
+      targetPort: 58846
+      name: daemon
+    - port: 8112
+      targetPort: 8112
+      name: web
+    - port: 61534
+      targetPort: 61534
+      name: listen
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deluge-pod-1
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: 10.0.0.11
+spec:
+  type: LoadBalancer
+  selector:
+    statefulset.kubernetes.io/pod-name: deluge-1
+  ports:
+    - port: 58846
+      targetPort: 58846
+      name: daemon
+    - port: 8112
+      targetPort: 8112
+      name: web
+    - port: 61535
+      targetPort: 61535
+      name: listen
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deluge-pod-2
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: 10.0.0.12
+spec:
+  type: LoadBalancer
+  selector:
+    statefulset.kubernetes.io/pod-name: deluge-2
+  ports:
+    - port: 58846
+      targetPort: 58846
+      name: daemon
+    - port: 8112
+      targetPort: 8112
+      name: web
+    - port: 61536
+      targetPort: 61536
+      name: listen

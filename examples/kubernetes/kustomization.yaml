@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: deluge
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/name: deluge
+      app.kubernetes.io/version: 2.2.0
+
+generatorOptions:
+  # Keep generated ConfigMap names stable so envFrom in the StatefulSet
+  # doesn't need a hashed suffix.
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: deluge-config
+    files:
+      - config/ltconfig.conf
+  - name: deluge-env
+    envs:
+      - config/deluge.env
+
+resources:
+  - namespace.yaml
+  - statefulset.yaml
+  - service.yaml

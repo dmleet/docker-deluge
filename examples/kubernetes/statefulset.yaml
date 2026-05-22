@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: deluge
+spec:
+  # One PVC per replica; per-pod BitTorrent listen ports are 61534 + pod_index.
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: deluge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: deluge
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000  # baked into the image
+        fsGroup: 1000
+        # Avoid recursive chown on every restart as `data` grows.
+        fsGroupChangePolicy: "OnRootMismatch"
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: deluge
+          image: "dmleet/deluge:2.2.0"
+          ports:
+            - containerPort: 58846
+              name: daemon
+            - containerPort: 8112
+              name: web
+          envFrom:
+            - configMapRef:
+                name: deluge-env
+            - secretRef:
+                name: deluge-web-password
+          env:
+            # Required so inject_core_config.py can derive a per-pod BT listen port.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Isolate each replica's .torrent files so they can't collide on shared storage.
+            - name: DELUGE_CONF_CORE_TORRENTFILES_LOCATION
+              value: "/downloads/torrents/$(POD_NAME)"
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /home/deluge/.config/deluge
+            - name: config
+              mountPath: /home/deluge/.config/deluge/ltconfig.conf
+              subPath: ltconfig.conf
+            - name: auth
+              mountPath: /home/deluge/.config/deluge/auth
+              subPath: auth
+            - name: downloads
+              mountPath: /downloads
+            # Deluge atomic-saves config to /tmp before mv, and PYTHON_EGG_CACHE
+            # points here for plugin egg extraction. Required with readOnlyRootFilesystem.
+            - name: tmpfs
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: deluge-config
+        - name: auth
+          secret:
+            secretName: deluge-auth
+        - name: downloads
+          # Replace with your own storage backend (NFS, CephFS, hostPath, PVC, etc.).
+          nfs:
+            path: /export/downloads
+            server: nas.example.com
+        - name: tmpfs
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # Replace with your cluster's storage class.
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 300Mi

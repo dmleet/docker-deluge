@@ -19,7 +19,7 @@ CI publishes three tags per push to `main`:
 |---|---|---|
 | `latest` | `latest` | Mutable rolling tag |
 | `<deluge-version>` | `2.2.0` | Pinned to the Deluge version in the Dockerfile |
-| `<deluge-version>-<shortsha>` | `2.2.0-a57047a` | Immutable snapshot |
+| `<deluge-version>-<shortsha>` | `2.2.0-abc1234` | Immutable snapshot |
 
 ## Ports
 
@@ -86,11 +86,69 @@ env:
 
 ## Kubernetes notes
 
-- **Run as uid/gid 1000.** Set `securityContext.runAsUser: 1000`, `runAsGroup: 1000`, and `fsGroup: 1000` so the mounted PVC is writable.
-- **`POD_NAME`** must be wired via the downward API for per-pod port assignment.
-- **Graceful shutdown** is supported — the entrypoint forwards `SIGTERM`/`SIGINT` to both `deluged` and `deluge-web`, so torrents are checkpointed before the kubelet's grace period expires.
-- **Downloads directory** is not declared as a volume. If you mount one (e.g. `/downloads`), set `DELUGE_CONF_CORE_DOWNLOAD_LOCATION=/downloads` and make sure it's writable by uid 1000.
-- **Probes:** TCP readiness on `8112` or `58846` is reasonable.
+A ready-to-adapt Kustomize overlay lives in [`examples/kubernetes/`](examples/kubernetes/), including a StatefulSet, per-pod LoadBalancer Services, `deluge.env` ConfigMap, and an ltConfig profile. Read [`examples/kubernetes/README.md`](examples/kubernetes/README.md) for the bootstrap steps.
+
+The notes below are the runtime contract the image expects, summarized.
+
+### Identity and permissions
+
+- **uid/gid 1000.** Set `securityContext.runAsUser: 1000`, `runAsGroup: 1000`, and `fsGroup: 1000` so the mounted PVC is writable. The image bakes in user `deluge` at uid/gid 1000.
+- `fsGroupChangePolicy: OnRootMismatch` is recommended to skip recursive chown on every restart once the PVC is correctly owned.
+
+### Read-only root filesystem
+
+The image is compatible with `readOnlyRootFilesystem: true`. Three writable paths must be mounted:
+
+| Path | Mount | Why |
+|---|---|---|
+| `/home/deluge/.config/deluge` | PVC | Deluge config, state, torrents, plugins. |
+| `/tmp` | `emptyDir` tmpfs | `Config.save()` writes to `/tmp/<file>.<rand>` before `mv`. Plugin egg extraction also lands here when `PYTHON_EGG_CACHE=/tmp`. |
+| Downloads dir (e.g. `/downloads`) | NFS / PVC / hostPath | Optional, but needed if you want downloads outside the small config PVC. |
+
+If you run without `readOnlyRootFilesystem`, the `/tmp` mount is not strictly required (Python would fall back to `~/.python-eggs/`), but setting `PYTHON_EGG_CACHE=/tmp` is still recommended for hygiene.
+
+### `POD_NAME` and per-pod listen ports
+
+Wire `POD_NAME` via the downward API. The image uses the trailing pod index to pick a BitTorrent listen port of `61534 + pod_index`.
+
+Two env vars are jointly required for this to actually bind:
+
+```
+DELUGE_CONF_CORE_RANDOM_PORT=false   # otherwise Deluge picks a random port and ignores the assignment
+POD_NAME                              # from fieldRef: metadata.name
+```
+
+Each replica needs its own externally-reachable listen port, so a single fronting Service across replicas does not work for inbound peer connectivity. Use one Service per pod (selector on `statefulset.kubernetes.io/pod-name`) — see the example manifests.
+
+### Daemon authentication (`auth` file)
+
+Deluge authenticates daemon clients against a plaintext `auth` file at `/home/deluge/.config/deluge/auth` with the format `username:password:level` per line ([upstream docs](https://deluge-torrent.org/userguide/authentication/)). The recommended pattern is to provide it via a Secret mounted with `subPath` so it's read-only and not managed by Deluge:
+
+```yaml
+volumeMounts:
+  - name: auth
+    mountPath: /home/deluge/.config/deluge/auth
+    subPath: auth
+```
+
+You won't be able to add daemon users through the UI in this layout — manage the Secret directly.
+
+### ltConfig
+
+The image bundles the ltConfig 2.0.0 plugin. To activate it:
+
+1. Add `ltConfig` to `DELUGE_CONF_CORE_ENABLED_PLUGINS` (the bracket-list env-var syntax: `[ltConfig,Label,...]`).
+2. Provide an `ltconfig.conf` if you want a managed tuning profile (or skip it and let the plugin write defaults).
+
+If the file is mounted from a ConfigMap via `subPath`, it's read-only — UI edits to ltConfig settings will fail to persist. Treat it as managed config.
+
+### Shutdown
+
+The entrypoint traps `SIGTERM` / `SIGINT` and forwards them to `deluged` and `deluge-web`, so Deluge checkpoints state before the kubelet's grace period expires. The default 30s `terminationGracePeriodSeconds` is more than enough.
+
+### Probes
+
+No `HEALTHCHECK` is set in the image. A TCP readiness probe on `58846` (daemon) or `8112` (web) is reasonable.
 
 ## Local build & run
 
@@ -117,3 +175,4 @@ Then open <http://localhost:8112>.
 | `inject_core_config.py` | Merges `DELUGE_CONF_CORE_*` env vars into `core.conf`. Also handles `POD_NAME` listen-port assignment. |
 | `inject_web_config.py` | Merges `DELUGE_CONF_WEB_*` env vars into `web.conf`. Handles `DELUGE_WEB_PASSWORD` / `DELUGE_WEB_SALT`. |
 | `.github/workflows/docker.yml` | Builds and pushes to Docker Hub on every push to `main`. |
+| `examples/kubernetes/` | Reference Kustomize overlay for StatefulSet deployment. Not part of the image. |
