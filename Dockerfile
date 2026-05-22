@@ -9,8 +9,8 @@ RUN echo "Install build requirements" && \
     python3 -m pip install --no-cache-dir --upgrade pip --break-system-packages && \
     apk add --no-cache geoip && \
     pip3 install --no-cache-dir --break-system-packages GeoIP && \
-    echo "Install deluge" && \
-    pip3 install --no-cache-dir --break-system-packages deluge==2.2.0 && \
+    echo "Install deluge (pin rencode to 1.0.6, the last pure-Python release; 1.0.8's prebuilt wheel targets Haswell+ and SIGILLs on older CPUs e.g. Proxmox x86-64-v2-AES)" && \
+    pip3 install --no-cache-dir --break-system-packages 'rencode==1.0.6' deluge==2.2.0 && \
     echo "Clear build deps" && \
     apk del .build_deps
 
