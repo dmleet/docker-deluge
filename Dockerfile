@@ -2,13 +2,15 @@ FROM docker.io/emmercm/libtorrent:2.0.10-alpine
 
 RUN echo "Install build requirements" && \
     apk add --no-cache --virtual .build_deps build-base python3-dev libffi-dev openssl-dev zlib-dev jpeg-dev geoip-dev rust cargo curl && \
+    echo "Sync expat with the upgraded python3 ABI (pyexpat needs libexpat >= 2.7)" && \
+    apk add --no-cache --upgrade expat && \
     echo "Install requirements" && \
     apk add --no-cache py3-pip && \
-    python3 -m pip install --upgrade pip --break-system-packages && \
+    python3 -m pip install --no-cache-dir --upgrade pip --break-system-packages && \
     apk add --no-cache geoip && \
-    pip3 install --break-system-packages GeoIP && \
+    pip3 install --no-cache-dir --break-system-packages GeoIP && \
     echo "Install deluge" && \
-    pip3 install --break-system-packages deluge==2.1.1 && \
+    pip3 install --no-cache-dir --break-system-packages deluge==2.2.0 && \
     echo "Clear build deps" && \
     apk del .build_deps
 
@@ -42,6 +44,11 @@ ADD --chown=deluge:deluge inject_web_config.py /opt/deluge/inject_web_config.py
 ADD --chown=deluge:deluge entrypoint.sh /opt/deluge/entrypoint.sh
 RUN chmod +x /opt/deluge/entrypoint.sh
 
-EXPOSE 8112 58846 58946 58946/udp
+# 8112  = web UI
+# 58846 = daemon RPC
+# BitTorrent listen port is assigned at runtime as (61534 + pod_index)
+# by inject_core_config.py; EXPOSE cannot represent a per-replica range,
+# so the BitTorrent port is intentionally not declared here.
+EXPOSE 8112 58846
 
 ENTRYPOINT [ "sh", "/opt/deluge/entrypoint.sh" ]
